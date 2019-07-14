@@ -5,9 +5,11 @@
 # Created by (obscured for blind review), May 2019
 
 # Setup -------------------------------------------------------------------
+# load packages
+library(reshape2)
 
 # Path and name of data files
-item_parameter_filename <- "item_pararameters.csv"  # needed if simulating CAT from item parameters
+item_parameter_filename <- "item_parameters.csv"  # needed if simulating CAT from item parameters
 trait_distribution_filename <- "score_data.csv"  # needed if simulaitng CAT from item parameters with empirical trait distribution
 
 # Functions ---------------------------------------------------------------
@@ -36,10 +38,12 @@ item_information_GRM <- function (prm, nTheta, firstTheta, lastTheta) {
       prf[i,t,1] <- 1 - brf[i,t,1]
       prf[i,t,prm$nCat[i]] <- brf[i,t,(prm$nCat[i]-1)]
       info [i,t] <- (brf[i,t,1]*(1-brf[i,t,1]))^2/prf[i,t,1] + (brf[i,t,(prm$nCat[1]-1)]*(1-brf[i,t,(prm$nCat[i]-1)]))^2/prf[i,t,prm$nCat[i]]
-      for (cat in 2:(prm$nCat[i]-1))
-      {
-        prf[i,t,cat] <- brf[i,t,cat-1] - brf[i,t,cat]
-        info [i,t] <- info[i,t] + (brf[i,t,cat-1]*(1-brf[i,t,cat-1])-brf[i,t,cat]*(1-brf[i,t,cat]))^2/prf[i,t,cat]
+      if(prm$nCat[i] > 2) {
+        for (cat in 2:(prm$nCat[i]-1))
+        {
+          prf[i,t,cat] <- brf[i,t,cat-1] - brf[i,t,cat]
+          info [i,t] <- info[i,t] + (brf[i,t,cat-1]*(1-brf[i,t,cat-1])-brf[i,t,cat]*(1-brf[i,t,cat]))^2/prf[i,t,cat]
+        }
       }
       info[i,t] <- info[i,t]*prm$a[i]^2 
     }
@@ -139,7 +143,12 @@ nCat <- my_parameters$nCat  # vector indicating number of response cateories for
 a <- my_parameters$a
 cmatrix <- my_parameters[,c("c1","c2","c3","c4")]
 colnames(cmatrix) <- paste0("c",1:(max(nCat)-1))
-item_parameters <- data.frame(nCat,a,cmatrix)
+
+scaling_factor <- 1.0  # scaling factor D in IRT model 1.0 for logistic, 1.7 for normal
+a <- a*scaling_factor
+cmatrix <- cmatrix*scaling_factor
+
+item_parameters <- data.frame(nCat,a,cmatrix[1:(max(nCat)-1)])
 
 # Compute data descriptives to use used later
 n_items <- nrow(item_parameters)   # number of items
@@ -160,32 +169,60 @@ BankSE <- CATData[CATData$Position == n_items,"SE"]
 scores <- read.csv(trait_distribution_filename, header = TRUE)$scores
 wt <- hist(scores,breaks = c(theta,(max(theta)+.01)), include.lowest = TRUE, plot = FALSE)$density
 
-
 # Graph Attainable Information with Trait Distribution --------------------------
-trait_label <- "Attainable Information"
+graph_label <- "Attainable Information"
 par(lwd=2)
 par(mar=c(5,4,4,4) + 0.3)
 maxinfo <- max(BankInfo)
 t <- c(1:n_theta)
 theta <- min_theta + (max_theta - min_theta)/(n_theta - 1) * (t-1)
 hist(scores, freq = FALSE, xlim = c(-4,4),density = 10,col='darkgreen',axes = FALSE, xlab = "", ylab = "",main="")
+#plot(theta,wt,pch=16,col="darkgreen", axes = FALSE, xlab = "", ylab = "",main="")
 axis(side=4, at = pretty(range(wt)))
 par(new = TRUE)
-plot(theta,BankInfo,type='l',col='black',lty=1,lwd=3,ylim=c(0,maxinfo),xlab="Trait Level",ylab="Bank Information",main=trait_label)
-axis(side=1, at = pretty(range(BankInfo)))
+plot(theta,BankInfo,type='l',col='black',lty=1,lwd=3,ylim=c(0,maxinfo),xlab="Trait Level",ylab="Bank Information",main=graph_label)
 mtext("Trait Frequency",side=4,line=2)
 
 # Graph Attainable Standard Error with Trait Distribution --------------------------
-trait_label <- "Attainable Standard Error"
+graph_label <- "Attainable Standard Error"
 par(lwd=2)
 par(mar=c(5,4,4,4) + 0.3)
 maxSE <- max(BankSE)
 t <- c(1:n_theta)
 theta <- min_theta + (max_theta - min_theta)/(n_theta - 1) * (t-1)
 hist(scores, freq = FALSE, xlim = c(-4,4),density = 10,col='darkgreen',axes = FALSE, xlab = "", ylab = "",main="")
+#plot(theta,wt,pch=16,col="darkgreen", axes = FALSE, xlab = "", ylab = "",main="")
 axis(side=4, at = pretty(range(wt)))
 par(new = TRUE)
-plot(theta,BankSE,type='l',col='black',lty=1,lwd=3,ylim=c(0,maxSE),xlab="Trait Level",ylab="Full Bank Expected SE",main=trait_label)
-axis(side=1, at = pretty(range(BankSE)))
-mtext("Trait Frequency",side=4,line=2)
+plot(theta,BankSE,type='l',col='black',lty=1,lwd=3,ylim=c(0,maxSE),xlab="Trait Level",ylab="Full Bank Expected SE",main=graph_label)
+mtext("Trait Frequency",side=4,line=2,col="darkgreen")
+abline(h=SE_cutoff)
+
+# Plot attainable information after k items -------------------------------
+graph_label <- "Attainable Information After k Items"
+par(lwd=1)
+par(mar=c(5,4,4,4) + 0.3)
+maxSE <- max(BankSE)
+t <- c(1:n_theta)
+theta <- min_theta + (max_theta - min_theta)/(n_theta - 1) * (t-1)
+plot(theta,CATData[CATData$Position==1,]$Bank_Info,type='l',col='black',lty=1,lwd=1,ylim=c(0,maxinfo),xlab="Trait Level",ylab="Expected SE",main=graph_label)
+abline(h=info_cutoff)
+for (i in 2:n_items) {
+  lines(theta,CATData[CATData$Position==i,]$Bank_Info)
+}
+
+
+# Plot attainable SE after k items -------------------------------
+graph_label <- "Attainable Standard Error After k Items"
+par(lwd=1)
+par(mar=c(5,4,4,4) + 0.3)
+maxSE <- max(BankSE)
+t <- c(1:n_theta)
+theta <- min_theta + (max_theta - min_theta)/(n_theta - 1) * (t-1)
+plot(theta,CATData[CATData$Position==1,]$SE,type='l',col='black',lty=1,lwd=1,ylim=c(0,maxSE),xlab="Trait Level",ylab="Expected SE",main=graph_label)
+abline(h=SE_cutoff)
+for (i in 2:n_items) {
+  lines(theta,CATData[CATData$Position==i,]$SE)
+}
+
 
